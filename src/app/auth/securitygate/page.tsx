@@ -9,6 +9,7 @@ import PatternLock from "react-pattern-lock";
 import { useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Link from "next/link";
+import Vault from "@/app/vault/page"; 
 
 const API = "https://backend-pbmi.onrender.com/api/security-config";
 
@@ -374,7 +375,7 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
             </>
           ) : (
             <>
-                        <Link href="/vault" className="hover:underline">Vault</Link>
+                        <Vault />
 
             </>
           )}
