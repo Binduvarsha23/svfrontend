@@ -9,7 +9,8 @@ import PatternLock from "react-pattern-lock";
 import { useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Link from "next/link";
-import Vault from "@/app/vault/page"; 
+import Vault from "@/app/vault/page";
+
 
 const API = "https://backend-pbmi.onrender.com/api/security-config";
 
@@ -34,7 +35,13 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const router = useRouter();
-
+ useEffect(() => {
+    if (!isVerified && forceLock) return; // still locked
+    if (config && (config.pinEnabled || config.passwordEnabled || config.patternEnabled)) {
+      router.push("/vault");
+    }
+  }, [isVerified, forceLock, config, router]);
+  
   const fetchConfig = useCallback(async () => {
     if (!user) {
       setIsVerified(true);
@@ -375,7 +382,7 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
             </>
           ) : (
             <>
-                        <Vault />
+                null
 
             </>
           )}
@@ -387,3 +394,4 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
 
 
 export default SecurityGate;
+
