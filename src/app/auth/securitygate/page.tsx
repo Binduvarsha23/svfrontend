@@ -35,7 +35,13 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   const router = useRouter();
 
   useEffect(() => setMounted(true), []);
-
+  useEffect(() => {
+    if (!isVerified && forceLock) return; // still locked
+    if (config && (config.pinEnabled || config.passwordEnabled || config.patternEnabled)) {
+      router.push("/vault");
+    }
+  }, [isVerified, forceLock, config, router]);
+  
   const fetchConfig = useCallback(async () => {
     if (!user) {
       setIsVerified(true);
@@ -198,11 +204,10 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
           </div>
         </div>
       )}
-      <div className="container mx-auto p-4">
-        {children || <h1 className="text-2xl font-bold">Your Secure Vault Content</h1>}
-      </div>
+     
     </>
   );
 };
 
 export default SecurityGate;
+
