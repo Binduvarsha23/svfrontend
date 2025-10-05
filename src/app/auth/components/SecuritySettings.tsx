@@ -8,7 +8,7 @@ import { auth } from "@/lib/firebase";
 import { format } from "date-fns";
 import PatternLock from "react-pattern-lock";
 
-const API = "https://backend-pbmi.onrender.com/api/security-config";
+const API = "https://securevaultbackend.onrender.com/api/security";
 
 const FIXED_SECURITY_QUESTIONS = [
   "What was the name of your first school?",
@@ -473,38 +473,40 @@ const SecuritySettings = () => {
             <div className="space-y-6 text-center">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Draw Pattern</label>
-                <div className="bg-white border border-gray-300 rounded-lg p-4 inline-block">
-                  <PatternLock
-                    width={250}
-                    size={3}
-                    path={pattern}
-                    onChange={(pts) => setPattern(pts || [])}
-                    onFinish={() => {
-                      if (pattern.length < 3) {
-                        setError("Pattern must connect at least 3 dots.");
-                      } else {
-                        setError("");
-                      }
-                    }}
-                  />
+                <div className="bg-gray-700  border border-gray-300 rounded-lg p-4 inline-block">
+ <PatternLock
+                  width={250}
+                  size={3}
+                  path={pattern}
+                  onChange={(pts) => setPattern(pts || [])}
+                  onFinish={() => {
+                    if (pattern.length < 3) {
+                      setError("Pattern must connect at least 3 dots.");
+                    } else {
+                      setError("");
+                    }
+                  }}
+                />
+
+
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Pattern</label>
-                <div className="bg-white border border-gray-300 rounded-lg p-4 inline-block">
-                  <PatternLock
-                    width={250}
-                    size={3}
-                    path={confirmPattern}
-                    onChange={(pts) => setConfirmPattern(pts || [])}
-                    onFinish={() => {
-                      if (confirmPattern.length < 3) {
-                        setError("Confirm pattern must connect at least 3 dots.");
-                      } else {
-                        setError("");
-                      }
-                    }}
-                  />
+                <div className="bg-gray-700 border border-gray-300 rounded-lg p-4 inline-block">
+                   <PatternLock
+                  width={250}
+                  size={3}
+                  path={confirmPattern}
+                  onChange={(pts) => setConfirmPattern(pts || [])}
+                  onFinish={() => {
+                    if (confirmPattern.length < 3) {
+                      setError("Confirm pattern must connect at least 3 dots.");
+                    } else {
+                      setError("");
+                    }
+                  }}
+                />
                 </div>
               </div>
               <button
