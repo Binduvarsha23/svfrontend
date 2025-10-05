@@ -374,7 +374,8 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
             </>
           ) : (
             <>
-              {children || <h1 className="text-2xl font-bold mb-4 text-gray-900">Your Secure Vault Content</h1>}
+                        <Link href="/vault" className="hover:underline">Vault</Link>
+
             </>
           )}
         </div>
@@ -382,5 +383,6 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
     </>
   );
 };
+
 
 export default SecurityGate;
