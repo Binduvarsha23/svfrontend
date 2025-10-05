@@ -1,18 +1,15 @@
-// app/auth/securitygate/page.tsx
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import axios from "axios";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth } from "@/lib/firebase";
-import PatternLock from "react-pattern-lock";
 import { useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
-import Link from "next/link";
-import Vault from "@/app/vault/page";
+import PatternLock from "react-pattern-lock";
 
-
-const API = "https://backend-pbmi.onrender.com/api/security-config";
+const API = "https://securevaultbackend.onrender.com/api/security";
 
 interface SecurityGateProps {
   children?: React.ReactNode;
@@ -34,14 +31,11 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   const [verifying, setVerifying] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
- useEffect(() => {
-    if (!isVerified && forceLock) return; // still locked
-    if (config && (config.pinEnabled || config.passwordEnabled || config.patternEnabled)) {
-      router.push("/vault");
-    }
-  }, [isVerified, forceLock, config, router]);
-  
+
+  useEffect(() => setMounted(true), []);
+
   const fetchConfig = useCallback(async () => {
     if (!user) {
       setIsVerified(true);
@@ -54,24 +48,22 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
 
     try {
       setIsLoadingConfig(true);
-
       const res = await axios.get(`${API}/${user.uid}`);
       const cfg = res.data.config;
 
-      if (
-        res.data.setupRequired ||
-        !(cfg.pinEnabled || cfg.passwordEnabled || cfg.patternEnabled)
-      ) {
-        setIsLoadingConfig(false);
-        router.push("/auth/security-settings"); // Redirect to setup
+      if (!cfg || !(cfg.pinEnabled || cfg.passwordEnabled || cfg.patternEnabled)) {
+        router.push("/auth/security-settings");
         return;
       }
 
       setConfig(cfg);
 
-      // Check for persisted verification (set after successful post-login verification)
       const verifiedKey = `vaultVerified_${user.uid}`;
       const verifiedTime = localStorage.getItem(verifiedKey);
+
+      const methods = ["pattern", "password", "pin"] as const;
+      const lastEnabled = methods.find((method) => cfg[`${method}Enabled`]);
+
       if (verifiedTime) {
         setIsVerified(true);
         setForceLock(false);
@@ -80,14 +72,8 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
         setError("");
         setInputValue("");
         setPattern([]);
-        // Set authMethod for potential future use, but skip prompt
-        const methods = ["pattern", "password", "pin"] as const;
-        const lastEnabled = methods.find((method) => cfg[`${method}Enabled`]);
         setAuthMethod(lastEnabled || null);
       } else {
-        // Prompt for verification (this happens only after fresh login)
-        const methods = ["pattern", "password", "pin"] as const;
-        const lastEnabled = methods.find((method) => cfg[`${method}Enabled`]);
         setAuthMethod(lastEnabled || null);
         setIsVerified(false);
         setForceLock(true);
@@ -110,17 +96,13 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   }, [user, router]);
 
   useEffect(() => {
-    if (user) {
-      fetchConfig();
-    } else if (!loadingUser) {
-      router.push("/");
-    }
+    if (user) fetchConfig();
+    else if (!loadingUser) router.push("/");
   }, [user, loadingUser, fetchConfig, router]);
 
   const verify = async () => {
     setVerifying(true);
     setError("");
-
     try {
       let valueToVerify = inputValue;
       if (authMethod === "pattern") {
@@ -137,6 +119,7 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
         value: valueToVerify,
         method: authMethod,
       });
+
       if (res.data.success) {
         setIsVerified(true);
         setForceLock(false);
@@ -144,91 +127,25 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
         setInputValue("");
         setPattern([]);
         setError("");
-        // Persist verification until logout
-        const verifiedKey = `vaultVerified_${user!.uid}`;
-        localStorage.setItem(verifiedKey, Date.now().toString());
+        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
       } else {
         setError("Invalid " + authMethod);
       }
     } catch (err: any) {
       console.error("Verification failed:", err);
-      if (axios.isAxiosError(err) && err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError("Verification failed. Please try again.");
-      }
+      setError(
+        axios.isAxiosError(err) && err.response?.data?.message
+          ? err.response.data.message
+          : "Verification failed. Please try again."
+      );
     } finally {
       setVerifying(false);
     }
   };
 
-  const verifyAnswer = async () => {
-    setIsSubmittingAnswer(true);
-    setError("");
-    try {
-      const res = await axios.post(`${API}/verify-security-answer`, {
-        userId: user!.uid,
-        question: selectedQuestion,
-        answer: answer.trim(),
-      });
-      if (res.data.success) {
-        setIsVerified(true);
-        setForceLock(false);
-        setShowModal(false);
-        setStep("enter");
-        setAnswer("");
-        setSelectedQuestion("");
-        setError("");
-        // Persist verification until logout
-        const verifiedKey = `vaultVerified_${user!.uid}`;
-        localStorage.setItem(verifiedKey, Date.now().toString());
-      } else {
-        setError(res.data.message || "Incorrect answer.");
-      }
-    } catch (err: any) {
-      console.error("Verification error:", err);
-      setError(axios.isAxiosError(err) && err.response?.data?.message ? err.response.data.message : "Verification error.");
-    } finally {
-      setIsSubmittingAnswer(false);
-    }
-  };
-
-  // Custom Spinner Component
-  const Spinner = () => (
-    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-  );
-
-  // Custom Alert Component
-  const AlertComponent = ({ variant = "danger", message }: { variant?: "danger" | "warning"; message: string }) => (
-    <div
-      className={`px-4 py-3 rounded-md mb-4 ${
-        variant === "danger"
-          ? "bg-red-50 border border-red-200 text-red-700"
-          : "bg-yellow-50 border border-yellow-200 text-yellow-700"
-      }`}
-    >
-      {message}
-    </div>
-  );
-
-  // Custom Modal Component with Tailwind
-  const CustomModal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-auto">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-          </div>
-          <div className="px-6 py-4">{children}</div>
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-            {/* Close button if needed */}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const modalTitle = authMethod
+    ? { enter: `Enter your ${authMethod}`, forgot: `Forgot ${authMethod}?` }[step]
+    : "Security Check";
 
   if (loadingUser || isLoadingConfig) {
     return (
@@ -239,26 +156,15 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
     );
   }
 
-  const modalTitle = authMethod
-    ? ({
-        enter: `Enter your ${authMethod}`,
-        forgot: `Forgot ${authMethod}? Use Security Question`,
-      }[step] || `Verify with ${authMethod}`)
-    : "Security Check";
-
   return (
     <>
       <Navbar />
-      {!isVerified && forceLock ? (
-        <CustomModal isOpen={showModal} onClose={() => {}} title={modalTitle}>
-          {error && <AlertComponent variant="danger" message={error} />}
-
-          {step === "enter" && authMethod && (
-            <div className="space-y-4">
-              {authMethod === "pattern" ? (
-                <div className="text-center p-3 rounded-lg bg-gray-800 text-white">
-                  <p className="font-semibold mb-3">Draw Your Pattern</p>
-                  <PatternLock
+      {!isVerified && forceLock && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-700 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium mb-4">{modalTitle}</h3>
+            {authMethod === "pattern" && mounted ? (
+              <PatternLock
                     width={250}
                     size={3}
                     path={pattern}
@@ -272,126 +178,31 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
                     }}
                     disabled={verifying}
                   />
-                </div>
-              ) : (
-                <input
-                  type={authMethod === "password" ? "password" : "text"}
-                  inputMode={authMethod === "pin" ? "numeric" : "text"}
-                  value={inputValue}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
-                  placeholder={`Enter ${authMethod}`}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                  autoFocus
-                  disabled={verifying}
-                />
-              )}
-              <div className="flex justify-between pt-4">
-                <button
-                  onClick={verify}
-                  disabled={verifying}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                >
-                  {verifying ? (
-                    <>
-                      <Spinner />
-                      <span className="ml-2">Verifying...</span>
-                    </>
-                  ) : (
-                    "Verify"
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep("forgot")}
-                  disabled={verifying}
-                  className="text-blue-600 hover:text-blue-500 text-sm font-medium transition-colors duration-200 disabled:opacity-50"
-                >
-                  Forgot?
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === "forgot" && (
-            <div className="space-y-4">
-              {config?.securityQuestions?.length > 0 ? (
-                <>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                    value={selectedQuestion}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedQuestion(e.target.value)}
-                    disabled={isSubmittingAnswer}
-                  >
-                    <option value="">Choose Security Question</option>
-                    {config.securityQuestions.map((q: any, i: number) => (
-                      <option key={i} value={q.question}>
-                        {q.question}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                    placeholder="Answer"
-                    value={answer}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAnswer(e.target.value)}
-                    disabled={isSubmittingAnswer}
-                  />
-                  <button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                    onClick={verifyAnswer}
-                    disabled={isSubmittingAnswer}
-                  >
-                    {isSubmittingAnswer ? (
-                      <>
-                        <Spinner />
-                        <span className="ml-2">Submitting...</span>
-                      </>
-                    ) : (
-                      "Submit Answer"
-                    )}
-                  </button>
-                </>
-              ) : (
-                <AlertComponent variant="warning" message="No security questions set up. Please set them in Security Settings." />
-              )}
-              <button
-                type="button"
-                onClick={() => setStep("enter")}
-                disabled={isSubmittingAnswer}
-                className="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              >
-                I remember my {authMethod}
-              </button>
-            </div>
-          )}
-        </CustomModal>
-      ) : (
-        <div className="container mx-auto p-4 pt-0">
-          {/* If no methods enabled */}
-          {config && !(config.pinEnabled || config.passwordEnabled || config.patternEnabled) ? (
-            <>
-              <h1 className="text-2xl font-bold mb-4 text-gray-900">Welcome to Your Vault</h1>
-              <p className="text-gray-600 mb-4">
-                No 2FA method enabled yet. Set up in{" "}
-                <Link href="/auth/security-settings" className="text-blue-600 hover:text-blue-500 font-medium">
-                  Security Settings
-                </Link>
-                .
-              </p>
-            </>
-          ) : (
-            <>
-                null
-
-            </>
-          )}
+            ) : (
+              <input
+                type={authMethod === "password" ? "password" : "text"}
+                inputMode={authMethod === "pin" ? "numeric" : "text"}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md mb-4"
+                placeholder={`Enter ${authMethod}`}
+              />
+            )}
+            <button
+              onClick={verify}
+              disabled={verifying}
+              className="w-full bg-blue-600 text-white py-2 rounded-md"
+            >
+              {verifying ? "Verifying..." : "Verify"}
+            </button>
+          </div>
         </div>
       )}
+      <div className="container mx-auto p-4">
+        {children || <h1 className="text-2xl font-bold">Your Secure Vault Content</h1>}
+      </div>
     </>
   );
 };
 
-
 export default SecurityGate;
-
