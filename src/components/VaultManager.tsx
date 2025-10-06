@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { encryptData, decryptData, safeParseJson } from "@/lib/crypto";
 import { useTheme } from "../content/ThemeContext";
+// Note: Interfaces and utility imports are kept the same for brevity and focused on the component structure.
 
 interface EncryptedVaultItem {
   _id: string;
@@ -75,6 +76,8 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<Record<string, boolean>>({});
   const [showFormPassword, setShowFormPassword] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Utility Functions (Kept the same) ---
 
   const toggleVaultPassword = (id: string) => {
     setVisiblePasswordIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -223,7 +226,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
             let isLegacy = false;
 
             const usernameParsed = safeParseJson(vault.username);
-            if (usernameParsed && typeof usernameParsed === "object" && usernameParsed.cipherText && usernameParsed.salt && usernameParsed.iv) {
+            if (usernameParsed && typeof usernameParsed === "object" && 'cipherText' in usernameParsed && 'salt' in usernameParsed && 'iv' in usernameParsed) {
               try {
                 decryptedUsername = await decryptData(usernameParsed, userId);
               } catch {
@@ -240,7 +243,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
             }
 
             const passwordParsed = safeParseJson(vault.password);
-            if (passwordParsed && typeof passwordParsed === "object" && passwordParsed.cipherText && passwordParsed.salt && passwordParsed.iv) {
+            if (passwordParsed && typeof passwordParsed === "object" && 'cipherText' in passwordParsed && 'salt' in passwordParsed && 'iv' in passwordParsed) {
               try {
                 decryptedPassword = await decryptData(passwordParsed, userId);
               } catch {
@@ -405,6 +408,8 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
     }
   }, [toast]);
 
+  // --- Rendering Logic ---
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -418,12 +423,12 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
 
   return (
     <div
-      className={`min-h-screen p-6 transition-colors duration-500 ${theme === "dark"
-        ? "bg-gray-400"
-        : "bg-blue-100"
+      className={`min-h-screen p-4 sm:p-6 transition-colors duration-500 ${theme === "dark"
+          ? "bg-gray-400"
+          : "bg-blue-100"
         }`}
     >
-      <h1 className="text-3xl font-bold mb-6">Password Vault ({decryptedVaults.length} entries)</h1>
+      <h1 className="text-xl sm:text-3xl font-bold mb-6">Password Vault ({decryptedVaults.length} entries)</h1>
 
       <div className="mb-6">
         <input
@@ -431,47 +436,49 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
           placeholder="Search by title, username, or tags..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
         />
       </div>
 
-      <div className="flex gap-4 mb-6">
+      {/* Primary Action Buttons: Changed to flex-wrap and smaller buttons on mobile */}
+      <div className="flex flex-wrap gap-2 sm:gap-4 mb-6">
         <button
           onClick={() => {
             resetForm();
             setIsAddModalOpen(true);
           }}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+          className="bg-blue-500 text-white px-3 py-2 text-sm sm:px-4 sm:py-2 rounded-lg hover:bg-blue-600 flex-1 min-w-[100px] sm:flex-initial"
         >
-          Add New Entry
+          ➕ New Entry
         </button>
         <button
           onClick={handleExport}
-          className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+          className="bg-green-500 text-white px-3 py-2 text-sm sm:px-4 sm:py-2 rounded-lg hover:bg-green-600 flex-1 min-w-[100px] sm:flex-initial"
         >
-          Export Vaults
+          ⬇️ Export Vaults
         </button>
         <button
           onClick={() => setIsImportModalOpen(true)}
-          className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600"
+          className="bg-purple-500 text-white px-3 py-2 text-sm sm:px-4 sm:py-2 rounded-lg hover:bg-purple-600 flex-1 min-w-[100px] sm:flex-initial"
         >
-          Import Vaults
+          ⬆️ Import Vaults
         </button>
       </div>
 
       <div className="grid gap-4">
         {filteredVaults.length > 0 ? (
           filteredVaults.map((vault) => (
-            <div key={vault._id} className="bg-white p-4 rounded-lg shadow-md border">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold">{vault.title}</h3>
-                  <p className="text-gray-600">
-                    Username: {vault.username} {vault.isLegacy && <span className="text-yellow-600 text-sm">(Edit to decrypt)</span>}
+            // Vault Card: Added 'overflow-hidden' and adjusted internal flex for mobile stacking
+            <div key={vault._id} className="bg-white p-4 rounded-lg shadow-md border overflow-hidden">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <div className="flex-1 min-w-0 mb-3 sm:mb-0">
+                  <h3 className="text-lg font-semibold truncate">{vault.title}</h3>
+                  <p className="text-gray-600 text-sm truncate" title={vault.username}>
+                    Username: {vault.username} {vault.isLegacy && <span className="text-yellow-600 text-xs">(Edit to decrypt)</span>}
                   </p>
                   {vault.password !== "[No Password]" && (
-                    <p className="text-gray-600 text-sm flex items-center gap-2">
-                      <span>
+                    <p className="text-gray-600 text-xs flex items-center gap-2 mt-1">
+                      <span className="truncate">
                         Password:&nbsp;
                         {visiblePasswordIds[vault._id]
                           ? vault.password
@@ -489,42 +496,44 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                     </p>
                   )}
                   {vault.url && (
-                    <p className="text-sm text-blue-500 mt-1">
+                    <p className="text-xs text-blue-500 mt-1 truncate">
                       <a href={vault.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
                         {vault.url}
                       </a>
                     </p>
                   )}
-                  {vault.notes && <p className="text-sm text-gray-500 mt-2">{vault.notes}</p>}
+                  {vault.notes && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{vault.notes}</p>}
                   {vault.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
+                    <div className="flex flex-wrap gap-1 mt-2">
                       {vault.tags.map((tag, index) => (
-                        <span key={index} className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        <span key={index} className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded truncate max-w-[100px]">
                           {tag}
                         </span>
                       ))}
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 ml-4 flex-shrink-0">
+
+                {/* Action Buttons: Changed to flex-wrap with margin-top for mobile */}
+                <div className="flex flex-wrap gap-1 sm:gap-2 sm:ml-4 flex-shrink-0 mt-3 sm:mt-0">
                   <button
                     onClick={() => copyToClipboard(vault.username, "Username")}
                     title="Copy Username"
-                    className="text-green-500 hover:text-green-700 p-1 rounded"
+                    className="text-green-500 hover:text-green-700 p-1 rounded text-lg"
                   >
                     📋
                   </button>
                   <button
                     onClick={() => copyToClipboard(vault.password, "Password")}
                     title="Copy Password"
-                    className="text-green-500 hover:text-green-700 p-1 rounded"
+                    className="text-green-500 hover:text-green-700 p-1 rounded text-lg"
                   >
                     🔑
                   </button>
-                  <button onClick={() => handleEdit(vault)} className="text-blue-500 hover:text-blue-700 px-2 py-1 rounded text-sm">
+                  <button onClick={() => handleEdit(vault)} className="text-blue-500 hover:text-blue-700 px-2 py-1 rounded text-xs sm:text-sm border border-blue-500">
                     Edit
                   </button>
-                  <button onClick={() => handleDelete(vault._id)} className="text-red-500 hover:text-red-700 px-2 py-1 rounded text-sm">
+                  <button onClick={() => handleDelete(vault._id)} className="text-red-500 hover:text-red-700 px-2 py-1 rounded text-xs sm:text-sm border border-red-500">
                     Delete
                   </button>
                 </div>
@@ -539,16 +548,18 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
       </div>
 
       {toast.message && (
-        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${toast.type === "success" ? "bg-green-500" : toast.type === "error" ? "bg-red-500" : "bg-blue-500"} text-white`}>
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 text-sm sm:text-base ${toast.type === "success" ? "bg-green-500" : toast.type === "error" ? "bg-red-500" : "bg-blue-500"} text-white`}>
           {toast.message}
         </div>
       )}
 
+      {/* Add/Edit Modal: Added min-h-full and max-w-full on mobile (sm:max-w-md) */}
       {(isAddModalOpen || isEditModalOpen) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}>
-          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-0 sm:p-4 z-50" onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}>
+          <div className="bg-white p-6 rounded-none sm:rounded-lg max-w-full w-full sm:max-w-md max-h-screen sm:max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold mb-4">{currentEditId ? "Edit Entry" : "Add Entry"}</h2>
             <div className="space-y-3">
+              {/* Form fields are already w-full and responsive */}
               <input
                 type="text"
                 placeholder="Title *"
@@ -577,7 +588,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 <button
                   type="button"
                   onClick={toggleFormPassword}
-                  className="absolute right-20 top-1/2 transform -translate-y-1/2 text-sm text-gray-600 hover:text-gray-800 px-2"
+                  className="absolute right-20 top-1/2 transform -translate-y-1/2 text-sm text-gray-600 hover:text-gray-800 px-1 sm:px-2"
                   title={showFormPassword ? "Hide password" : "Show password"}
                 >
                   {showFormPassword ? "🙈" : "👁️"}
@@ -585,7 +596,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 <button
                   type="button"
                   onClick={() => setIsGeneratorOpen(true)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-blue-500 hover:text-blue-700 px-2"
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 text-xs sm:text-sm text-blue-500 hover:text-blue-700 px-1 sm:px-2"
                 >
                   Generate
                 </button>
@@ -610,14 +621,15 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
               />
+              {/* Modal Action Buttons: Made full-width (flex-1) */}
               <div className="flex gap-3 pt-2">
-                <button onClick={handleSubmit} className="flex-1 bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600">
+                <button onClick={handleSubmit} className="flex-1 bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600 text-sm sm:text-base">
                   Save & Decrypt
                 </button>
                 <button
                   type="button"
                   onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); resetForm(); }}
-                  className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600"
+                  className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600 text-sm sm:text-base"
                 >
                   Cancel
                 </button>
@@ -627,9 +639,10 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
         </div>
       )}
 
+      {/* Import Modal: Applied similar responsiveness as Add/Edit Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setIsImportModalOpen(false)}>
-          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-0 sm:p-4 z-50" onClick={() => setIsImportModalOpen(false)}>
+          <div className="bg-white p-6 rounded-none sm:rounded-lg max-w-full w-full sm:max-w-md max-h-screen sm:max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold mb-4">Import Vaults</h2>
             <div className="space-y-4">
               <p className="text-sm text-gray-600">Select a JSON file containing encrypted vaults to import.</p>
@@ -642,12 +655,12 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 disabled={isImporting}
               />
               {selectedFile && (
-                <p className="text-sm text-gray-600">Selected: {selectedFile.name}</p>
+                <p className="text-sm text-gray-600 truncate">Selected: {selectedFile.name}</p>
               )}
               {importPreview && (
                 <div className="bg-gray-100 p-3 rounded-lg">
                   <p className="text-sm font-semibold mb-2">Preview ({importPreview.length} vaults):</p>
-                  <ul className="text-sm text-gray-600 max-h-40 overflow-y-auto">
+                  <ul className="text-xs text-gray-600 max-h-40 overflow-y-auto">
                     {importPreview.map((vault, index) => (
                       <li key={index} className="truncate">
                         {vault.title} (Username: {vault.username.slice(0, 20)}...)
@@ -663,9 +676,9 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 <button
                   onClick={handleImport}
                   disabled={!selectedFile || !importPreview || isImporting}
-                  className={`flex-1 py-3 rounded-lg ${selectedFile && importPreview && !isImporting
-                    ? "bg-blue-500 text-white hover:bg-blue-600"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  className={`flex-1 py-3 rounded-lg text-sm sm:text-base ${selectedFile && importPreview && !isImporting
+                      ? "bg-blue-500 text-white hover:bg-blue-600"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                 >
                   {isImporting ? "Importing..." : "Import"}
@@ -677,7 +690,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                     setImportPreview(null);
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
-                  className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600"
+                  className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600 text-sm sm:text-base"
                   disabled={isImporting}
                 >
                   Cancel
@@ -688,9 +701,10 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
         </div>
       )}
 
+      {/* Generator Modal: Applied similar responsiveness as Add/Edit Modal */}
       {isGeneratorOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setIsGeneratorOpen(false)}>
-          <div className="bg-white p-6 rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-0 sm:p-4 z-50" onClick={() => setIsGeneratorOpen(false)}>
+          <div className="bg-white p-6 rounded-none sm:rounded-lg max-w-full w-full sm:max-w-md" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold mb-4">Password Generator</h2>
             <div className="space-y-4">
               <div>
@@ -704,7 +718,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                 />
               </div>
-              <label className="flex items-center">
+              <label className="flex items-center text-sm">
                 <input
                   type="checkbox"
                   checked={generatorOptions.includeNumbers}
@@ -713,7 +727,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 />
                 Include Numbers
               </label>
-              <label className="flex items-center">
+              <label className="flex items-center text-sm">
                 <input
                   type="checkbox"
                   checked={generatorOptions.includeSymbols}
@@ -722,7 +736,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 />
                 Include Symbols
               </label>
-              <label className="flex items-center">
+              <label className="flex items-center text-sm">
                 <input
                   type="checkbox"
                   checked={generatorOptions.excludeAmbiguous}
@@ -731,23 +745,23 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 />
                 Exclude Ambiguous Chars (0, O, I, l)
               </label>
-              <button onClick={generatePassword} className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 mb-4">
+              <button onClick={generatePassword} className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 mb-4 text-sm sm:text-base">
                 Generate
               </button>
               {generatedPassword && (
                 <div className="bg-gray-100 p-3 rounded-lg mb-4">
                   <p className="text-sm font-mono break-all mb-2">Generated: {generatedPassword}</p>
                   <div className="flex gap-2">
-                    <button onClick={() => copyToClipboard(generatedPassword, "Generated Password")} className="flex-1 bg-blue-500 text-white py-2 rounded">
+                    <button onClick={() => copyToClipboard(generatedPassword, "Generated Password")} className="flex-1 bg-blue-500 text-white py-2 rounded text-sm sm:text-base">
                       Copy
                     </button>
-                    <button onClick={useGeneratedPassword} className="flex-1 bg-indigo-500 text-white py-2 rounded">
+                    <button onClick={useGeneratedPassword} className="flex-1 bg-indigo-500 text-white py-2 rounded text-sm sm:text-base">
                       Use This
                     </button>
                   </div>
                 </div>
               )}
-              <button onClick={() => setIsGeneratorOpen(false)} className="w-full bg-gray-500 text-white py-3 rounded">
+              <button onClick={() => setIsGeneratorOpen(false)} className="w-full bg-gray-500 text-white py-3 rounded text-sm sm:text-base">
                 Close
               </button>
             </div>
