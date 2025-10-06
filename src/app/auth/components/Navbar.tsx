@@ -42,9 +42,6 @@ const Navbar = () => {
         </Link>
 
         <div className="flex items-center gap-4">
-          <Link href="/auth/security-settings" className="hover:underline">
-            Security Settings
-          </Link>
           <Link href="/vault" className="hover:underline">
             Vault
           </Link>
@@ -67,3 +64,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+
