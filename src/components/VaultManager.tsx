@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { encryptData, decryptData, safeParseJson } from "@/lib/crypto";
+
 interface EncryptedVaultItem {
   _id: string;
   userId: string;
   title: string;
-  username: string; // JSON or plaintext
-  password: string; // JSON or plaintext
+  username: string;
+  password: string;
   url?: string;
   notes?: string;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +24,7 @@ interface DecryptedVaultItem {
   password: string;
   url?: string;
   notes?: string;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
   encryptedUsername: string;
@@ -45,6 +48,10 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<EncryptedVaultItem[] | null>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
   const [currentEditId, setCurrentEditId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: "",
@@ -52,6 +59,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
     password: "",
     url: "",
     notes: "",
+    tags: [] as string[],
   });
   const [toast, setToast] = useState({ message: "", type: "" as ToastType });
   const [generatorOptions, setGeneratorOptions] = useState({
@@ -62,9 +70,9 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
   });
   const [generatedPassword, setGeneratedPassword] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  // Add to existing useState group
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<Record<string, boolean>>({});
   const [showFormPassword, setShowFormPassword] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleVaultPassword = (id: string) => {
     setVisiblePasswordIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -72,19 +80,128 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
 
   const toggleFormPassword = () => setShowFormPassword((s) => !s);
 
-  // Fetch and decrypt vaults on mount
+  const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const tags = e.target.value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    setFormData({ ...formData, tags });
+  };
+
+  const handleExport = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/vault/export/${userId}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `vault_${userId}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        setToast({ message: "Vaults exported successfully!", type: "success" });
+      } else {
+        setToast({ message: "Failed to export vaults", type: "error" });
+      }
+    } catch (error) {
+      console.error("Error exporting vaults:", error);
+      setToast({ message: "Export error", type: "error" });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setSelectedFile(null);
+      setImportPreview(null);
+      return;
+    }
+
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const vaults = JSON.parse(event.target?.result as string);
+        if (!Array.isArray(vaults)) {
+          setToast({ message: "Invalid file format: Must be an array of vaults", type: "error" });
+          setImportPreview(null);
+          return;
+        }
+        const validVaults = vaults.filter((vault) =>
+          vault._id &&
+          vault.userId &&
+          vault.title &&
+          vault.username &&
+          vault.password &&
+          Array.isArray(vault.tags)
+        );
+        setImportPreview(validVaults as EncryptedVaultItem[]);
+        if (validVaults.length !== vaults.length) {
+          setToast({ message: "Some vault items were invalid and skipped", type: "info" });
+        }
+      } catch (error) {
+        console.error("Error parsing file:", error);
+        setToast({ message: "Invalid JSON file", type: "error" });
+        setImportPreview(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile || !importPreview) {
+      setToast({ message: "No valid file selected", type: "error" });
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const response = await fetch(`${API_BASE}/vault/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, vaults: importPreview }),
+      });
+
+      if (response.ok) {
+        const { count, skipped } = await response.json();
+        if (count === 0) {
+          setToast({ message: `${skipped || importPreview.length} vaults already exist in the database!`, type: "info" });
+        } else {
+          await fetchAndDecryptVaults();
+          let msg = `${count} vault${count === 1 ? '' : 's'} imported successfully!`;
+          if (skipped > 0) msg += ` (${skipped} skipped)`;
+          setToast({ message: msg, type: "success" });
+        }
+        setIsImportModalOpen(false);
+        setSelectedFile(null);
+        setImportPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } else {
+        const errorText = await response.text();
+        setToast({ message: `Import failed: ${errorText}`, type: "error" });
+      }
+    } catch (error) {
+      console.error("Error importing vaults:", error);
+      setToast({ message: "Import error", type: "error" });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   useEffect(() => {
     if (userId) {
       fetchAndDecryptVaults();
     }
   }, [userId]);
 
-  // Filter on search change
   useEffect(() => {
     const filtered = decryptedVaults.filter(
       (vault) =>
         vault.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vault.username.toLowerCase().includes(searchTerm.toLowerCase())
+        vault.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        vault.tags.some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     setFilteredVaults(filtered);
   }, [searchTerm, decryptedVaults]);
@@ -97,15 +214,13 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
         const encryptedData = await response.json() as EncryptedVaultItem[];
         setEncryptedVaults(encryptedData);
 
-        // Decrypt with smart parsing
         const decryptedData = await Promise.all(
           encryptedData.map(async (vault) => {
             let decryptedUsername = "[No Username]";
             let decryptedPassword = "[No Password]";
             let isLegacy = false;
 
-            // Parse username with safeParseJson
-            const usernameParsed = safeParseJson(vault.username); // Fixed: Now imported
+            const usernameParsed = safeParseJson(vault.username);
             if (usernameParsed && typeof usernameParsed === "object" && usernameParsed.cipherText && usernameParsed.salt && usernameParsed.iv) {
               try {
                 decryptedUsername = await decryptData(usernameParsed, userId);
@@ -114,7 +229,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 isLegacy = true;
               }
             } else if (vault.username && vault.username.length < 50 && !vault.username.startsWith("{") && !vault.username.startsWith("\"{")) {
-              // Likely plaintext (short, no JSON indicators)
               decryptedUsername = vault.username;
               isLegacy = true;
               console.warn(`Plaintext legacy username for vault ${vault._id}`);
@@ -123,8 +237,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
               isLegacy = true;
             }
 
-            // Parse password with safeParseJson
-            const passwordParsed = safeParseJson(vault.password); // Fixed: Now imported
+            const passwordParsed = safeParseJson(vault.password);
             if (passwordParsed && typeof passwordParsed === "object" && passwordParsed.cipherText && passwordParsed.salt && passwordParsed.iv) {
               try {
                 decryptedPassword = await decryptData(passwordParsed, userId);
@@ -133,7 +246,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 isLegacy = true;
               }
             } else if (vault.password && vault.password.length < 50 && !vault.password.startsWith("{") && !vault.password.startsWith("\"{")) {
-              // Likely plaintext
               decryptedPassword = vault.password;
               isLegacy = true;
               console.warn(`Plaintext legacy password for vault ${vault._id}`);
@@ -148,6 +260,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
               password: decryptedPassword,
               encryptedUsername: vault.username,
               encryptedPassword: vault.password,
+              tags: vault.tags || [],
               isLegacy,
             } as DecryptedVaultItem;
           })
@@ -163,8 +276,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
       setIsLoading(false);
     }
   };
-
-  // ... (encryptField, handleSubmit, handleEdit, handleDelete, copyToClipboard, resetForm, generatePassword, useGeneratedPassword, useEffect for toast - unchanged from previous)
 
   const encryptField = async (text: string): Promise<string> => {
     const encrypted = await encryptData(text, userId);
@@ -183,6 +294,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
         userId,
         username: encryptedUsername,
         password: encryptedPassword,
+        tags: formData.tags,
       };
 
       const url = currentEditId ? `${API_BASE}/vault/${currentEditId}` : `${API_BASE}/vault`;
@@ -217,6 +329,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
       password: vault.password === "[Encrypted - Edit to decrypt]" ? "" : vault.password,
       url: vault.url || "",
       notes: vault.notes || "",
+      tags: vault.tags || [],
     });
     setCurrentEditId(vault._id);
     setIsEditModalOpen(true);
@@ -224,8 +337,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
       setToast({ message: "Legacy loaded. Edit & save to decrypt with your account key.", type: "info" });
     }
   };
-
-  // ... (rest unchanged: handleDelete, copyToClipboard, resetForm, generatePassword, useGeneratedPassword, toast useEffect)
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this entry?")) return;
@@ -262,7 +373,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
   };
 
   const resetForm = () => {
-    setFormData({ title: "", username: "", password: "", url: "", notes: "" });
+    setFormData({ title: "", username: "", password: "", url: "", notes: "", tags: [] });
     setCurrentEditId(null);
   };
 
@@ -310,22 +421,36 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Search by title or username..."
+          placeholder="Search by title, username, or tags..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
-      <button
-        onClick={() => {
-          resetForm();
-          setIsAddModalOpen(true);
-        }}
-        className="mb-6 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-      >
-        Add New Entry
-      </button>
+      <div className="flex gap-4 mb-6">
+        <button
+          onClick={() => {
+            resetForm();
+            setIsAddModalOpen(true);
+          }}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+        >
+          Add New Entry
+        </button>
+        <button
+          onClick={handleExport}
+          className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+        >
+          Export Vaults
+        </button>
+        <button
+          onClick={() => setIsImportModalOpen(true)}
+          className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600"
+        >
+          Import Vaults
+        </button>
+      </div>
 
       <div className="grid gap-4">
         {filteredVaults.length > 0 ? (
@@ -345,7 +470,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                           ? vault.password
                           : Array.from({ length: Math.min(12, vault.password.length || 8) }).map(() => "•").join("")}
                       </span>
-
                       <button
                         onClick={() => toggleVaultPassword(vault._id)}
                         title={visiblePasswordIds[vault._id] ? "Hide password" : "Show password"}
@@ -354,11 +478,9 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                       >
                         {visiblePasswordIds[vault._id] ? "🙈" : "👁️"}
                       </button>
-
                       {vault.isLegacy && <span className="text-yellow-600 text-xs">(Edit to decrypt)</span>}
                     </p>
                   )}
-
                   {vault.url && (
                     <p className="text-sm text-blue-500 mt-1">
                       <a href={vault.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
@@ -367,6 +489,15 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                     </p>
                   )}
                   {vault.notes && <p className="text-sm text-gray-500 mt-2">{vault.notes}</p>}
+                  {vault.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {vault.tags.map((tag, index) => (
+                        <span key={index} className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 ml-4 flex-shrink-0">
                   <button
@@ -406,12 +537,11 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
         </div>
       )}
 
-      {/* Add/Edit Modal - Unchanged */}
       {(isAddModalOpen || isEditModalOpen) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}>
           <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold mb-4">{currentEditId ? "Edit Entry" : "Add Entry"}</h2>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="space-y-3">
               <input
                 type="text"
                 placeholder="Title *"
@@ -437,8 +567,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-28"
                   required
                 />
-
-                {/* Eye toggle */}
                 <button
                   type="button"
                   onClick={toggleFormPassword}
@@ -447,8 +575,6 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 >
                   {showFormPassword ? "🙈" : "👁️"}
                 </button>
-
-                {/* Generate button */}
                 <button
                   type="button"
                   onClick={() => setIsGeneratorOpen(true)}
@@ -457,12 +583,18 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                   Generate
                 </button>
               </div>
-
               <input
                 type="url"
                 placeholder="URL (optional)"
                 value={formData.url}
                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                placeholder="Tags (comma-separated, optional)"
+                value={formData.tags.join(", ")}
+                onChange={handleTagsChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <textarea
@@ -472,7 +604,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
               />
               <div className="flex gap-3 pt-2">
-                <button type="submit" className="flex-1 bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600">
+                <button onClick={handleSubmit} className="flex-1 bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600">
                   Save & Decrypt
                 </button>
                 <button
@@ -483,12 +615,73 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                   Cancel
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Generator Modal - Unchanged */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setIsImportModalOpen(false)}>
+          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-4">Import Vaults</h2>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">Select a JSON file containing encrypted vaults to import.</p>
+              <input
+                type="file"
+                accept="application/json"
+                onChange={handleFileSelect}
+                ref={fileInputRef}
+                className="w-full p-3 border border-gray-300 rounded-lg"
+                disabled={isImporting}
+              />
+              {selectedFile && (
+                <p className="text-sm text-gray-600">Selected: {selectedFile.name}</p>
+              )}
+              {importPreview && (
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <p className="text-sm font-semibold mb-2">Preview ({importPreview.length} vaults):</p>
+                  <ul className="text-sm text-gray-600 max-h-40 overflow-y-auto">
+                    {importPreview.map((vault, index) => (
+                      <li key={index} className="truncate">
+                        {vault.title} (Username: {vault.username.slice(0, 20)}...)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {isImporting && (
+                <p className="text-sm text-blue-600">Importing...</p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleImport}
+                  disabled={!selectedFile || !importPreview || isImporting}
+                  className={`flex-1 py-3 rounded-lg ${
+                    selectedFile && importPreview && !isImporting
+                      ? "bg-blue-500 text-white hover:bg-blue-600"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  {isImporting ? "Importing..." : "Import"}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setSelectedFile(null);
+                    setImportPreview(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600"
+                  disabled={isImporting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isGeneratorOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setIsGeneratorOpen(false)}>
           <div className="bg-white p-6 rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
