@@ -34,18 +34,27 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
 
   useEffect(() => setMounted(true), []);
 
-  
   const fetchConfig = useCallback(async () => {
     if (!user) return;
     try {
       setIsLoadingConfig(true);
       const res = await axios.get(`${API}/${user.uid}`);
       const cfg = res.data.config;
+
       if (!cfg) {
         router.push("/auth/security-settings");
         return;
       }
+
       setConfig(cfg);
+
+      // ✅ Skip security gate if no methods enabled
+      if (!cfg.patternEnabled && !cfg.passwordEnabled && !cfg.pinEnabled) {
+        setIsVerified(true);
+        setForceLock(false);
+        router.push("/vault");
+        return;
+      }
 
       const verifiedKey = `vaultVerified_${user.uid}`;
       if (localStorage.getItem(verifiedKey)) {
@@ -92,15 +101,14 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
       });
 
       if (res.data.success) {
-  localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
-  setIsVerified(true);
-  setForceLock(false);
-  setError("");
- router.push("/vault");
-} else {
-  setError("Invalid " + authMethod);
-}
-
+        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
+        setIsVerified(true);
+        setForceLock(false);
+        setError("");
+        router.push("/vault");
+      } else {
+        setError("Invalid " + authMethod);
+      }
     } catch (err: any) {
       setError(
         axios.isAxiosError(err) && err.response?.data?.message
@@ -113,41 +121,40 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   };
 
   const verifySecurityAnswer = async () => {
-  if (!selectedQuestion || !answer) {
-    setError("Please select a question and provide an answer.");
-    return;
-  }
-
-  setIsSubmittingAnswer(true);
-  setError("");
-  try {
-    const res = await axios.post(`${API}/verify-security-answer`, {
-      userId: user!.uid,
-      question: selectedQuestion,
-      answer,
-    });
-
-    if (res.data.success) {
-      localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
-      setIsVerified(true);
-      setForceLock(false);
-      setError("");
-      setStep("enter");
-      router.push("/vault"); // ✅ navigate to vault after success
-    } else {
-      setError("Incorrect answer.");
+    if (!selectedQuestion || !answer) {
+      setError("Please select a question and provide an answer.");
+      return;
     }
-  } catch (err: any) {
-    setError(
-      axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
-        : "Verification failed. Try again."
-    );
-  } finally {
-    setIsSubmittingAnswer(false);
-  }
-};
 
+    setIsSubmittingAnswer(true);
+    setError("");
+    try {
+      const res = await axios.post(`${API}/verify-security-answer`, {
+        userId: user!.uid,
+        question: selectedQuestion,
+        answer,
+      });
+
+      if (res.data.success) {
+        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
+        setIsVerified(true);
+        setForceLock(false);
+        setError("");
+        setStep("enter");
+        router.push("/vault");
+      } else {
+        setError("Incorrect answer.");
+      }
+    } catch (err: any) {
+      setError(
+        axios.isAxiosError(err) && err.response?.data?.message
+          ? err.response.data.message
+          : "Verification failed. Try again."
+      );
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
+  };
 
   if (loadingUser || isLoadingConfig) {
     return (
@@ -176,8 +183,7 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
                     path={pattern}
                     onChange={(pts) => setPattern(pts || [])}
                     onFinish={() => {
-                      if (pattern.length < 3)
-                        setError("Pattern must connect at least 3 dots.");
+                      if (pattern.length < 3) setError("Pattern must connect at least 3 dots.");
                       else setError("");
                     }}
                     disabled={verifying}
