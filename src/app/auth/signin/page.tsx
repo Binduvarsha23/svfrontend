@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,8 @@ export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [randomCode, setRandomCode] = useState<string | null>(null);
   const [userInput, setUserInput] = useState("");
+  const [codeTimestamp, setCodeTimestamp] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
   const router = useRouter();
 
   const generateRandomCode = (length = 8) => {
@@ -25,6 +27,27 @@ export default function SignInPage() {
     }
     return result;
   };
+
+  // Countdown timer for the QR code
+  useEffect(() => {
+    if (!codeTimestamp) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const diff = 10 * 60 * 1000 - (now - codeTimestamp); // 10 minutes in ms
+      if (diff <= 0) {
+        setRandomCode(null);
+        setCodeTimestamp(null);
+        setTimeLeft(0);
+        clearInterval(interval);
+        toast.error("Code expired! Please sign in again.");
+      } else {
+        setTimeLeft(Math.floor(diff / 1000)); // seconds remaining
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [codeTimestamp]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,9 +64,11 @@ export default function SignInPage() {
       const uid = res.user.uid;
       localStorage.removeItem(`vaultVerified_${uid}`);
 
-      // Generate random string and store in state
+      // Generate random code
       const code = generateRandomCode(8);
       setRandomCode(code);
+      setCodeTimestamp(Date.now());
+      setUserInput("");
 
     } catch (error: any) {
       toast.error(error.message);
@@ -53,6 +78,19 @@ export default function SignInPage() {
   };
 
   const handleVerifyCode = () => {
+    if (!randomCode || !codeTimestamp) {
+      toast.error("No code available. Please sign in again.");
+      return;
+    }
+
+    const now = Date.now();
+    if (now - codeTimestamp > 10 * 60 * 1000) {
+      toast.error("Code expired! Please sign in again.");
+      setRandomCode(null);
+      setCodeTimestamp(null);
+      return;
+    }
+
     if (userInput === randomCode) {
       const uid = auth.currentUser?.uid;
       if (uid) localStorage.setItem(`vaultVerified_${uid}`, "true");
@@ -61,6 +99,12 @@ export default function SignInPage() {
     } else {
       toast.error("Incorrect code. Try again.");
     }
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? "0" + s : s}`;
   };
 
   return (
@@ -113,6 +157,7 @@ export default function SignInPage() {
           <div className="bg-white p-8 rounded-lg shadow-md text-center">
             <h2 className="text-xl font-bold mb-4">Scan the QR and enter the code</h2>
             <QRCodeCanvas value={randomCode} size={200} />
+            <p className="mt-2 text-sm text-gray-600">Code expires in: {formatTime(timeLeft)}</p>
             <input
               type="text"
               placeholder="Enter code here"
