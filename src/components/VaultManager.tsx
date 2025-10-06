@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { encryptData, decryptData, safeParseJson } from "@/lib/crypto";
+import { useTheme } from "../content/ThemeContext";
 
 interface EncryptedVaultItem {
   _id: string;
@@ -68,6 +69,7 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
     includeSymbols: true,
     excludeAmbiguous: true,
   });
+  const { theme } = useTheme();
   const [generatedPassword, setGeneratedPassword] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<Record<string, boolean>>({});
@@ -415,7 +417,12 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div
+      className={`min-h-screen p-6 transition-colors duration-500 ${theme === "dark"
+        ? "bg-gray-400"
+        : "bg-blue-100"
+        }`}
+    >
       <h1 className="text-3xl font-bold mb-6">Password Vault ({decryptedVaults.length} entries)</h1>
 
       <div className="mb-6">
@@ -656,11 +663,10 @@ const VaultManager: React.FC<VaultManagerProps> = ({ userId }) => {
                 <button
                   onClick={handleImport}
                   disabled={!selectedFile || !importPreview || isImporting}
-                  className={`flex-1 py-3 rounded-lg ${
-                    selectedFile && importPreview && !isImporting
-                      ? "bg-blue-500 text-white hover:bg-blue-600"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
+                  className={`flex-1 py-3 rounded-lg ${selectedFile && importPreview && !isImporting
+                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
                 >
                   {isImporting ? "Importing..." : "Import"}
                 </button>
