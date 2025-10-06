@@ -13,16 +13,20 @@ const Navbar = () => {
   const { theme, toggleTheme } = useTheme();
 
   const handleLogout = async () => {
-    const uid = auth.currentUser?.uid;
-    try {
-      await signOut(auth);
-      if (uid) {
-        localStorage.removeItem(`vaultVerified_${uid}`);
-      }
-      toast.success("Logged out successfully!");
+    const uid = auth.currentUser?.uid; // capture uid first
+    if (!uid) {
+      toast.error("No user signed in.");
       router.push("/");
+      return;
+    }
+
+    try {
+      await signOut(auth); // sign out Firebase
+      localStorage.removeItem(`vaultVerified_${uid}`); // remove localStorage
+      toast.success("Logged out successfully!");
+      router.push("/"); // redirect
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error?.message || "Logout failed");
     }
   };
 
@@ -48,7 +52,7 @@ const Navbar = () => {
             Logout
           </button>
 
-          {/* Theme Toggle Button */}
+          {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
             className="ml-3 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition"
