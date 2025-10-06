@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import dynamic from "next/dynamic";
 import axios from "axios";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth } from "@/lib/firebase";
@@ -24,7 +23,6 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   const [inputValue, setInputValue] = useState("");
   const [pattern, setPattern] = useState<number[]>([]);
   const [error, setError] = useState("");
-  const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<"enter" | "forgot">("enter");
   const [selectedQuestion, setSelectedQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -35,67 +33,33 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
   const router = useRouter();
 
   useEffect(() => setMounted(true), []);
-  useEffect(() => {
-    if (!isVerified && forceLock) return; // still locked
-    if (config && (config.pinEnabled || config.passwordEnabled || config.patternEnabled)) {
-      router.push("/vault");
-    }
-  }, [isVerified, forceLock, config, router]);
-  
-  const fetchConfig = useCallback(async () => {
-    if (!user) {
-      setIsVerified(true);
-      setForceLock(false);
-      setShowModal(false);
-      setError("User not authenticated. Please log in.");
-      setIsLoadingConfig(false);
-      return;
-    }
 
+  const fetchConfig = useCallback(async () => {
+    if (!user) return;
     try {
       setIsLoadingConfig(true);
       const res = await axios.get(`${API}/${user.uid}`);
       const cfg = res.data.config;
-
-      if (!cfg || !(cfg.pinEnabled || cfg.passwordEnabled || cfg.patternEnabled)) {
+      if (!cfg) {
         router.push("/auth/security-settings");
         return;
       }
-
       setConfig(cfg);
 
       const verifiedKey = `vaultVerified_${user.uid}`;
-      const verifiedTime = localStorage.getItem(verifiedKey);
-
-      const methods = ["pattern", "password", "pin"] as const;
-      const lastEnabled = methods.find((method) => cfg[`${method}Enabled`]);
-
-      if (verifiedTime) {
+      if (localStorage.getItem(verifiedKey)) {
         setIsVerified(true);
         setForceLock(false);
-        setShowModal(false);
-        setStep("enter");
-        setError("");
-        setInputValue("");
-        setPattern([]);
-        setAuthMethod(lastEnabled || null);
       } else {
+        const methods = ["pattern", "password", "pin"] as const;
+        const lastEnabled = methods.find((m) => cfg[`${m}Enabled`]);
         setAuthMethod(lastEnabled || null);
-        setIsVerified(false);
         setForceLock(true);
-        setShowModal(true);
-        setStep("enter");
-        setError("");
-        setInputValue("");
-        setPattern([]);
       }
-    } catch (err) {
-      console.error("Error fetching config:", err);
-      setError("Failed to fetch security settings. Access granted for now.");
+    } catch {
+      setError("Could not load security configuration");
       setIsVerified(true);
       setForceLock(false);
-      setShowModal(false);
-      setAuthMethod(null);
     } finally {
       setIsLoadingConfig(false);
     }
@@ -127,31 +91,60 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
       });
 
       if (res.data.success) {
+        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
         setIsVerified(true);
         setForceLock(false);
-        setShowModal(false);
-        setInputValue("");
-        setPattern([]);
         setError("");
-        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
       } else {
         setError("Invalid " + authMethod);
       }
     } catch (err: any) {
-      console.error("Verification failed:", err);
       setError(
         axios.isAxiosError(err) && err.response?.data?.message
           ? err.response.data.message
-          : "Verification failed. Please try again."
+          : "Verification failed. Try again."
       );
     } finally {
       setVerifying(false);
     }
   };
 
-  const modalTitle = authMethod
-    ? { enter: `Enter your ${authMethod}`, forgot: `Forgot ${authMethod}?` }[step]
-    : "Security Check";
+  const verifySecurityAnswer = async () => {
+  if (!selectedQuestion || !answer) {
+    setError("Please select a question and provide an answer.");
+    return;
+  }
+
+  setIsSubmittingAnswer(true);
+  setError("");
+  try {
+    const res = await axios.post(`${API}/verify-security-answer`, {
+      userId: user!.uid,
+      question: selectedQuestion,
+      answer,
+    });
+
+    if (res.data.success) {
+      localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
+      setIsVerified(true);
+      setForceLock(false);
+      setError("");
+      setStep("enter");
+      router.push("/vault"); // ✅ navigate to vault after success
+    } else {
+      setError("Incorrect answer.");
+    }
+  } catch (err: any) {
+    setError(
+      axios.isAxiosError(err) && err.response?.data?.message
+        ? err.response.data.message
+        : "Verification failed. Try again."
+    );
+  } finally {
+    setIsSubmittingAnswer(false);
+  }
+};
+
 
   if (loadingUser || isLoadingConfig) {
     return (
@@ -166,48 +159,111 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
     <>
       <Navbar />
       {!isVerified && forceLock && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-700 rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium mb-4">{modalTitle}</h3>
-            {authMethod === "pattern" && mounted ? (
-              <PatternLock
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white">
+            {step === "enter" && (
+              <>
+                <h3 className="text-lg font-medium mb-4">
+                  Enter your {authMethod}
+                </h3>
+                {authMethod === "pattern" && mounted ? (
+                  <PatternLock
                     width={250}
                     size={3}
                     path={pattern}
                     onChange={(pts) => setPattern(pts || [])}
                     onFinish={() => {
-                      if (pattern.length < 3) {
+                      if (pattern.length < 3)
                         setError("Pattern must connect at least 3 dots.");
-                      } else {
-                        setError("");
-                      }
+                      else setError("");
                     }}
                     disabled={verifying}
                   />
-            ) : (
-              <input
-                type={authMethod === "password" ? "password" : "text"}
-                inputMode={authMethod === "pin" ? "numeric" : "text"}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md mb-4"
-                placeholder={`Enter ${authMethod}`}
-              />
+                ) : (
+                  <input
+                    type={authMethod === "password" ? "password" : "text"}
+                    inputMode={authMethod === "pin" ? "numeric" : "text"}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md mb-4 text-black"
+                    placeholder={`Enter ${authMethod}`}
+                  />
+                )}
+                <button
+                  onClick={verify}
+                  disabled={verifying}
+                  className="w-full bg-blue-600 text-white py-2 rounded-md"
+                >
+                  {verifying ? "Verifying..." : "Verify"}
+                </button>
+
+                {config?.securityQuestions?.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setStep("forgot");
+                      setError("");
+                      setAnswer("");
+                      setSelectedQuestion("");
+                    }}
+                    className="w-full mt-3 text-sm underline text-gray-300 hover:text-white"
+                  >
+                    Forgot {authMethod}?
+                  </button>
+                )}
+
+                {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
+              </>
             )}
-            <button
-              onClick={verify}
-              disabled={verifying}
-              className="w-full bg-blue-600 text-white py-2 rounded-md"
-            >
-              {verifying ? "Verifying..." : "Verify"}
-            </button>
+
+            {step === "forgot" && (
+              <>
+                <h3 className="text-lg font-medium mb-4">
+                  Answer a Security Question
+                </h3>
+                <select
+                  value={selectedQuestion}
+                  onChange={(e) => setSelectedQuestion(e.target.value)}
+                  className="w-full mb-3 px-3 py-2 rounded-md text-black"
+                >
+                  <option value="">Select a question</option>
+                  {config.securityQuestions.map((q: any, idx: number) => (
+                    <option key={idx} value={q.question}>
+                      {q.question}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md mb-4 text-black"
+                  placeholder="Enter your answer"
+                />
+
+                <button
+                  onClick={verifySecurityAnswer}
+                  disabled={isSubmittingAnswer}
+                  className="w-full bg-green-600 text-white py-2 rounded-md"
+                >
+                  {isSubmittingAnswer ? "Verifying..." : "Submit Answer"}
+                </button>
+
+                <button
+                  onClick={() => setStep("enter")}
+                  className="w-full mt-3 text-sm underline text-gray-300 hover:text-white"
+                >
+                  Back to {authMethod} login
+                </button>
+
+                {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
+              </>
+            )}
           </div>
         </div>
       )}
-     
     </>
   );
 };
 
 export default SecurityGate;
-
