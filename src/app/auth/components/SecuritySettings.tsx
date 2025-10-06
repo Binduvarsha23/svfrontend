@@ -6,6 +6,7 @@ import { useAuthState } from "react-firebase-hooks/auth";
 import { auth } from "@/lib/firebase";
 import { format } from "date-fns";
 import PatternLock from "react-pattern-lock";
+import { useTheme } from "@/content/ThemeContext";
 
 const API = "https://securevaultbackend.onrender.com/api/security";
 
@@ -63,6 +64,8 @@ const SecuritySettings = () => {
   const [mode, setMode] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const [confirmValue, setConfirmValue] = useState("");
+    const { theme } = useTheme();
+
   const [activeMethod, setActiveMethod] = useState<string | null>(null);
 
   useEffect(() => {
@@ -345,7 +348,13 @@ const SecuritySettings = () => {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl bg-gray-50 dark:bg-gray-900 min-h-screen">
+        <div
+      className={`min-h-screen p-6 transition-colors duration-500 ${
+        theme === "dark"
+          ? "bg-gray-400"
+          : "bg-blue-100"
+      }`}
+    >
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
         <h1 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-100">Security Settings</h1>
         
@@ -369,12 +378,19 @@ const SecuritySettings = () => {
                 <label className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
                   <span>Enable {method.charAt(0).toUpperCase() + method.slice(1)}</span>
                   <input
-                    type="checkbox"
-                    className="relative inline-block w-10 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 checked:bg-blue-600 dark:checked:bg-blue-500"
-                    checked={Boolean(config?.[`${method}Enabled` as keyof Config])}
-                    onChange={() => handleToggle(method)}
-                    disabled={isSaving}
-                  />
+  type="checkbox"
+  checked={Boolean(config?.[`${method}Enabled` as keyof Config])}
+  onChange={() => handleToggle(method)}
+  disabled={isSaving}
+  className={`relative inline-block w-10 h-6 rounded-full border-2 transition-all duration-300 ease-in-out
+    ${theme === "dark"
+      ? "border-gray-500 bg-gray-700 checked:bg-gray-500 focus:ring-gray-400"
+      : "border-gray-300 bg-gray-200 checked:bg-blue-600 focus:ring-blue-500"
+    }
+    focus:outline-none focus:ring-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+  `}
+/>
+
                   <span className="sr-only">{method} toggle</span>
                 </label>
               </div>
@@ -413,19 +429,23 @@ const SecuritySettings = () => {
                 />
               </div>
               <button
-                className="w-full bg-blue-500 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleSubmit}
-                disabled={isSaving}
-              >
-                {isSaving && activeMethod === "pin" ? (
-                  <>
-                    <Spinner />
-                    <span className="ml-2">Saving...</span>
-                  </>
-                ) : (
-                  "Save PIN"
-                )}
-              </button>
+      className={`w-full font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 ${
+        theme === "dark"
+          ? "bg-gray-700 hover:bg-gray-600 text-gray-100 focus:ring-gray-400"
+          : "bg-blue-500 hover:bg-blue-700 text-white focus:ring-blue-400"
+      }`}
+      onClick={handleSubmit}
+      disabled={isSaving}
+    >
+      {isSaving && activeMethod === "pin" ? (
+        <>
+          <Spinner />
+          <span className="ml-2">Saving...</span>
+        </>
+      ) : (
+        "Save PIN"
+      )}
+    </button>
             </div>
           </div>
         )}
