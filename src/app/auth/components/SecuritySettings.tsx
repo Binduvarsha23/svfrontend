@@ -1,4 +1,3 @@
-// app/auth/components/SecuritySettings.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -45,7 +44,7 @@ interface Config {
 }
 
 const SecuritySettings = () => {
-  const [user] = useAuthState(auth);
+  const [user, loadingAuth] = useAuthState(auth); // Add loadingAuth
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<Config | null>(null);
   const [error, setError] = useState("");
@@ -61,31 +60,35 @@ const SecuritySettings = () => {
   const [showSecurityQuestionsForm, setShowSecurityQuestionsForm] = useState(false);
   const [canChangeSecurityQuestions, setCanChangeSecurityQuestions] = useState(true);
   const [nextChangeDate, setNextChangeDate] = useState<Date | null>(null);
-
   const [mode, setMode] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const [confirmValue, setConfirmValue] = useState("");
   const [activeMethod, setActiveMethod] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) {
-      fetchConfig();
-    } else {
+    if (loadingAuth) {
+      // Wait for Firebase auth to resolve
+      setLoading(true);
+      return;
+    }
+
+    if (!user) {
       setLoading(false);
       setError("User not authenticated. Please log in.");
+      return;
     }
-  }, [user]);
+
+    fetchConfig();
+  }, [user, loadingAuth]);
 
   const fetchConfig = async () => {
     try {
       setLoading(true);
-
       const res = await axios.get(`${API}/${user!.uid}`);
-      const cfg: Config = res.data.config || {}; // default empty object if null
+      const cfg: Config = res.data.config || {};
 
       setConfig(cfg);
 
-      // Safely handle security questions - always ensure 3 slots
       if (cfg.securityQuestions?.length) {
         setSecurityQuestions(
           cfg.securityQuestions.map((q: BackendSecurityQuestion) => ({
@@ -94,7 +97,6 @@ const SecuritySettings = () => {
           }))
         );
       } else {
-        // If no questions set, initialize with 3 empty slots
         setSecurityQuestions([
           { question: "", answer: "" },
           { question: "", answer: "" },
@@ -102,12 +104,9 @@ const SecuritySettings = () => {
         ]);
       }
 
-      // Handle last updated date for security questions
       if (cfg.securityQuestionsLastUpdatedAt) {
         const lastUpdated = new Date(cfg.securityQuestionsLastUpdatedAt);
-        const sixMonthsLater = new Date(
-          lastUpdated.setMonth(lastUpdated.getMonth() + 6)
-        );
+        const sixMonthsLater = new Date(lastUpdated.setMonth(lastUpdated.getMonth() + 6));
         const now = new Date();
 
         if (now < sixMonthsLater) {
@@ -131,7 +130,7 @@ const SecuritySettings = () => {
   };
 
   const handleToggle = async (method: string) => {
-    if (!config) return;
+    if (!config || !user) return;
 
     const isEnabled = config[`${method}Enabled` as keyof Config];
 
@@ -323,46 +322,55 @@ const SecuritySettings = () => {
   };
 
   const Spinner = () => (
-    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 dark:border-blue-400"></div>
   );
 
-  if (loading) {
+  if (loading || loadingAuth) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        <p className="mt-3 text-gray-500">Loading security settings...</p>
+      <div className="flex flex-col items-center justify-center min-h-[80vh] bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
+        <p className="mt-3 text-gray-500 dark:text-gray-400">Loading security settings...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[80vh] bg-gray-50 dark:bg-gray-900">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded">
+          User not authenticated. Please log in.
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl">
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">Security Settings</h1>
+    <div className="container mx-auto p-4 max-w-2xl bg-gray-50 dark:bg-gray-900 min-h-screen">
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-100">Security Settings</h1>
         
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded mb-4">
             {error}
           </div>
         )}
         
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded mb-4">
             {successMessage}
           </div>
         )}
 
-        {/* Authentication Methods */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Authentication Methods</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">Authentication Methods</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {["pin", "password", "pattern"].map((method) => (
               <div key={method} className="space-y-2">
-                <label className="flex items-center justify-between text-sm font-medium text-gray-700">
+                <label className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
                   <span>Enable {method.charAt(0).toUpperCase() + method.slice(1)}</span>
                   <input
                     type="checkbox"
-                    className="relative inline-block w-10 h-6 rounded-full border-2 border-gray-300 bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="relative inline-block w-10 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 checked:bg-blue-600 dark:checked:bg-blue-500"
                     checked={Boolean(config?.[`${method}Enabled` as keyof Config])}
                     onChange={() => handleToggle(method)}
                     disabled={isSaving}
@@ -374,18 +382,17 @@ const SecuritySettings = () => {
           </div>
         </div>
 
-        {/* Setup Forms */}
         {mode === "pin" && (
-          <div className="bg-gray-50 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-800">Set a 6-digit PIN</h3>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Set a 6-digit PIN</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter 6-digit PIN</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Enter 6-digit PIN</label>
                 <input
                   type="text"
                   inputMode="numeric"
                   placeholder="Enter 6-digit PIN"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                   value={value}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
                   maxLength={6}
@@ -393,12 +400,12 @@ const SecuritySettings = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm 6-digit PIN</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm 6-digit PIN</label>
                 <input
                   type="text"
                   inputMode="numeric"
                   placeholder="Confirm 6-digit PIN"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                   value={confirmValue}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmValue(e.target.value)}
                   maxLength={6}
@@ -406,7 +413,7 @@ const SecuritySettings = () => {
                 />
               </div>
               <button
-                className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-500 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleSubmit}
                 disabled={isSaving}
               >
@@ -424,33 +431,33 @@ const SecuritySettings = () => {
         )}
 
         {mode === "password" && (
-          <div className="bg-gray-50 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-800">Set a Strong Password</h3>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Set a Strong Password</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter Password</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Enter Password</label>
                 <input
                   type="password"
                   placeholder="Enter Password"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                   value={value}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
                   disabled={isSaving}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
                 <input
                   type="password"
                   placeholder="Confirm Password"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                   value={confirmValue}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmValue(e.target.value)}
                   disabled={isSaving}
                 />
               </div>
               <button
-                className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-500 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleSubmit}
                 disabled={isSaving}
               >
@@ -468,49 +475,47 @@ const SecuritySettings = () => {
         )}
 
         {mode === "pattern" && (
-          <div className="bg-gray-50 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-800 text-center">Draw and Confirm Your Pattern</h3>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100 text-center">Draw and Confirm Your Pattern</h3>
             <div className="space-y-6 text-center">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Draw Pattern</label>
-                <div className="bg-gray-700  border border-gray-300 rounded-lg p-4 inline-block">
- <PatternLock
-                  width={250}
-                  size={3}
-                  path={pattern}
-                  onChange={(pts) => setPattern(pts || [])}
-                  onFinish={() => {
-                    if (pattern.length < 3) {
-                      setError("Pattern must connect at least 3 dots.");
-                    } else {
-                      setError("");
-                    }
-                  }}
-                />
-
-
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Draw Pattern</label>
+                <div className="bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-4 inline-block">
+                  <PatternLock
+                    width={250}
+                    size={3}
+                    path={pattern}
+                    onChange={(pts) => setPattern(pts || [])}
+                    onFinish={() => {
+                      if (pattern.length < 3) {
+                        setError("Pattern must connect at least 3 dots.");
+                      } else {
+                        setError("");
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Pattern</label>
-                <div className="bg-gray-700 border border-gray-300 rounded-lg p-4 inline-block">
-                   <PatternLock
-                  width={250}
-                  size={3}
-                  path={confirmPattern}
-                  onChange={(pts) => setConfirmPattern(pts || [])}
-                  onFinish={() => {
-                    if (confirmPattern.length < 3) {
-                      setError("Confirm pattern must connect at least 3 dots.");
-                    } else {
-                      setError("");
-                    }
-                  }}
-                />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Confirm Pattern</label>
+                <div className="bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-4 inline-block">
+                  <PatternLock
+                    width={250}
+                    size={3}
+                    path={confirmPattern}
+                    onChange={(pts) => setConfirmPattern(pts || [])}
+                    onFinish={() => {
+                      if (confirmPattern.length < 3) {
+                        setError("Confirm pattern must connect at least 3 dots.");
+                      } else {
+                        setError("");
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <button
-                className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-500 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleSubmit}
                 disabled={isSaving}
               >
@@ -527,12 +532,11 @@ const SecuritySettings = () => {
           </div>
         )}
 
-        {/* Security Questions */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Security Questions</h2>
+            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Security Questions</h2>
             <button
-              className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gray-500 hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 dark:focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 setShowSecurityQuestionsForm(!showSecurityQuestionsForm);
                 setError("");
@@ -545,22 +549,22 @@ const SecuritySettings = () => {
           </div>
 
           {config?.securityQuestionsLastUpdatedAt && !canChangeSecurityQuestions && (
-            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 px-4 py-3 rounded mb-4">
               You can update your security questions again on {nextChangeDate ? format(nextChangeDate, "PPP") : "N/A"}.
             </div>
           )}
 
           {showSecurityQuestionsForm && (
-            <div className="bg-gray-50 rounded-lg p-6">
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
               <div className="space-y-6">
                 {securityQuestions.map((q, idx) => (
                   <div key={idx} className="space-y-4">
-                    <label className="block text-sm font-medium text-gray-700">Question {idx + 1}</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Question {idx + 1}</label>
                     <div className="space-y-2">
                       <select
                         value={q.question}
                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleSecurityQuestionChange(idx, "question", e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                         disabled={isSaving}
                       >
                         <option value="">Choose a question</option>
@@ -576,11 +580,11 @@ const SecuritySettings = () => {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Answer</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Answer</label>
                       <input
                         type="text"
                         placeholder="Enter your answer"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-gray-900 dark:text-gray-100"
                         value={q.answer}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSecurityQuestionChange(idx, "answer", e.target.value)}
                         disabled={isSaving}
@@ -589,7 +593,7 @@ const SecuritySettings = () => {
                   </div>
                 ))}
                 <button
-                  className="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-green-500 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-800 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleSaveSecurityQuestions}
                   disabled={isSaving}
                 >
