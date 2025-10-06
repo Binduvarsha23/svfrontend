@@ -90,15 +90,16 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
         method: authMethod,
       });
 
-      if (res.data.success) {
-        localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
-        setIsVerified(true);
-        setForceLock(false);
-        setError("");
-      } else {
-        setError("Invalid " + authMethod);
-      }
-    } catch (err: any) {
+     if (res.data.success) {
+  localStorage.setItem(`vaultVerified_${user!.uid}`, Date.now().toString());
+  setIsVerified(true);
+  setForceLock(false);
+  setError("");
+  router.push("/vault"); // ✅ redirect after successful verification
+} else {
+  setError("Invalid " + authMethod);
+}
+ catch (err: any) {
       setError(
         axios.isAxiosError(err) && err.response?.data?.message
           ? err.response.data.message
@@ -267,3 +268,4 @@ const SecurityGate: React.FC<SecurityGateProps> = ({ children }) => {
 };
 
 export default SecurityGate;
+
