@@ -36,7 +36,7 @@ export default function HomePage() {
           <p className="text-gray-600">Your secure vault is ready.</p>
           <div className="flex gap-4 justify-center mt-4">
             <Link
-              href="/auth/securitygate"
+              href="/vault"
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-md hover:shadow-lg"
             >
               Go to Vault
