@@ -6,24 +6,26 @@ import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { toast, ToastContainer } from "react-toastify";
 import Link from "next/link";
-import "react-toastify/dist/ReactToastify.css";
 import axios from "axios";
+import "react-toastify/dist/ReactToastify.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://securevaultbackend.onrender.com";
+const API_BASE =  "https://securevaultbackend.onrender.com";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [secretKey, setSecretKey] = useState<string | null>(null);
   const [userInput, setUserInput] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
   const router = useRouter();
 
+  // 1️⃣ Sign in and generate QR
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      console.log("[frontend] signing in with", email);
       const res = await signInWithEmailAndPassword(auth, email, password);
 
       if (!res.user.emailVerified) {
@@ -33,33 +35,26 @@ export default function SignInPage() {
       }
 
       const uid = res.user.uid;
-      console.log("[frontend] signed in uid:", uid);
 
-      // Request QR from backend
-      console.log("[frontend] POST", `${API_BASE}/api/generate-qr`, { uid, email });
+      // Request QR & secret from backend
       const response = await axios.post(`${API_BASE}/api/generate-qr`, { uid, email });
 
-      console.log("[frontend] /generate-qr response:", response?.data);
-      if (response.data.qrImage) {
+      if (response.data.qrImage && response.data.secret) {
         setQrCodeUrl(response.data.qrImage);
-        toast.success("QR code generated! Scan it with your authenticator app.");
+        setSecretKey(response.data.secret);
+        toast.success("QR code generated! Scan or copy secret key.");
       } else {
-        console.error("[frontend] generate-qr: missing qrImage in response", response.data);
         toast.error("Failed to generate QR. Try again.");
       }
     } catch (error: any) {
-      console.error("[frontend] generate-qr error:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        request: !!error.request,
-      });
+      console.error("[frontend] generate-qr error:", error);
       toast.error(error.response?.data?.message || error.message || "Request failed");
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 2️⃣ Verify TOTP code
   const handleVerifyCode = async () => {
     try {
       const uid = auth.currentUser?.uid;
@@ -67,9 +62,9 @@ export default function SignInPage() {
         toast.error("User not found. Please sign in again.");
         return;
       }
-      console.log("[frontend] verifying code for uid:", uid, "code:", userInput);
+
       const res = await axios.post(`${API_BASE}/api/verify-qr`, { uid, token: userInput });
-      console.log("[frontend] /verify-qr response:", res?.data);
+
       if (res.data.success) {
         toast.success("Verification successful!");
         router.push("/vault");
@@ -77,12 +72,7 @@ export default function SignInPage() {
         toast.error(res.data.message || "Invalid code. Try again.");
       }
     } catch (error: any) {
-      console.error("[frontend] verify-qr error:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        request: !!error.request,
-      });
+      console.error("[frontend] verify-qr error:", error);
       toast.error("Verification failed. Check console.");
     }
   };
@@ -113,27 +103,39 @@ export default function SignInPage() {
                 />
               </div>
             </div>
-            <div>
-              <button type="submit" disabled={isLoading}
-                className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
-                {isLoading ? "Signing in..." : "Sign In"}
-              </button>
-            </div>
-            <div className="text-sm text-center space-y-2">
+            <button type="submit" disabled={isLoading}
+              className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
+              {isLoading ? "Signing in..." : "Sign In"}
+            </button>
+            <div className="text-sm text-center space-y-2 mt-2">
               <Link href="/auth/signup" className="text-blue-600 hover:text-blue-500">Create account</Link>
               <Link href="/auth/forgot-password" className="text-blue-600 hover:text-blue-500">Forgot password?</Link>
             </div>
           </form>
         ) : (
           <div className="bg-white p-8 rounded-lg shadow-md text-center">
-            <h2 className="text-xl font-bold mb-4">Scan this QR with your Authenticator app</h2>
-            <img src={qrCodeUrl} alt="QR Code" className="mx-auto mb-4 w-48 h-48" />
-            <p className="text-sm text-gray-600 mb-2">Then enter the 6-digit code below</p>
-            <input type="text" placeholder="Enter code" value={userInput}
+            <h2 className="text-xl font-bold mb-4">Scan this QR or copy secret key</h2>
+            {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className="mx-auto mb-4 w-48 h-48" />}
+            {secretKey && (
+              <p className="mb-2">
+                <button
+                  className="text-blue-600 underline"
+                  onClick={() => setShowSecret(!showSecret)}
+                >
+                  {showSecret ? secretKey : "Show Secret Key"}
+                </button>
+              </p>
+            )}
+            <p className="text-sm text-gray-600 mb-2">Enter the 6-digit code from your Authenticator app</p>
+            <input
+              type="text" placeholder="Enter code" value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" />
+              className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+            />
             <button onClick={handleVerifyCode}
-              className="mt-4 w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700">Verify</button>
+              className="mt-4 w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700">
+              Verify
+            </button>
           </div>
         )}
       </div>
