@@ -91,3 +91,8 @@ npm start
 - **Clipboard Operations:** Clipboard.js
 - **Notifications:** React Toastify
 
+### Images:
+![SignIn page](signin.png)
+![qr code for 2fa page](qr.png)
+![Vault page light mode](lightmode.png)
+![Dark Mode Vault](darkmode.png)
