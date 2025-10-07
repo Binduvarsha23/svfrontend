@@ -1,58 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { toast, ToastContainer } from "react-toastify";
 import Link from "next/link";
 import "react-toastify/dist/ReactToastify.css";
-import { QRCodeCanvas } from "qrcode.react";
+import axios from "axios";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://securevaultbackend.onrender.com";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [randomCode, setRandomCode] = useState<string | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [userInput, setUserInput] = useState("");
-  const [codeTimestamp, setCodeTimestamp] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(0);
   const router = useRouter();
-
-  const generateRandomCode = (length = 8) => {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
-  // Countdown timer for the QR code
-  useEffect(() => {
-    if (!codeTimestamp) return;
-
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const diff = 10 * 60 * 1000 - (now - codeTimestamp); // 10 minutes in ms
-      if (diff <= 0) {
-        setRandomCode(null);
-        setCodeTimestamp(null);
-        setTimeLeft(0);
-        clearInterval(interval);
-        toast.error("Code expired! Please sign in again.");
-      } else {
-        setTimeLeft(Math.floor(diff / 1000)); // seconds remaining
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [codeTimestamp]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
+      console.log("[frontend] signing in with", email);
       const res = await signInWithEmailAndPassword(auth, email, password);
 
       if (!res.user.emailVerified) {
@@ -62,65 +33,71 @@ export default function SignInPage() {
       }
 
       const uid = res.user.uid;
-      localStorage.removeItem(`vaultVerified_${uid}`);
+      console.log("[frontend] signed in uid:", uid);
 
-      // Generate random code
-      const code = generateRandomCode(8);
-      setRandomCode(code);
-      setCodeTimestamp(Date.now());
-      setUserInput("");
+      // Request QR from backend
+      console.log("[frontend] POST", `${API_BASE}/api/generate-qr`, { uid, email });
+      const response = await axios.post(`${API_BASE}/api/generate-qr`, { uid, email });
 
+      console.log("[frontend] /generate-qr response:", response?.data);
+      if (response.data.qrImage) {
+        setQrCodeUrl(response.data.qrImage);
+        toast.success("QR code generated! Scan it with your authenticator app.");
+      } else {
+        console.error("[frontend] generate-qr: missing qrImage in response", response.data);
+        toast.error("Failed to generate QR. Try again.");
+      }
     } catch (error: any) {
-      toast.error(error.message);
+      console.error("[frontend] generate-qr error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        request: !!error.request,
+      });
+      toast.error(error.response?.data?.message || error.message || "Request failed");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleVerifyCode = () => {
-    if (!randomCode || !codeTimestamp) {
-      toast.error("No code available. Please sign in again.");
-      return;
-    }
-
-    const now = Date.now();
-    if (now - codeTimestamp > 10 * 60 * 1000) {
-      toast.error("Code expired! Please sign in again.");
-      setRandomCode(null);
-      setCodeTimestamp(null);
-      return;
-    }
-
-    if (userInput === randomCode) {
+  const handleVerifyCode = async () => {
+    try {
       const uid = auth.currentUser?.uid;
-      if (uid) localStorage.setItem(`vaultVerified_${uid}`, "true");
-      toast.success("Verification successful!");
-      router.push("/vault");
-    } else {
-      toast.error("Incorrect code. Try again.");
+      if (!uid) {
+        toast.error("User not found. Please sign in again.");
+        return;
+      }
+      console.log("[frontend] verifying code for uid:", uid, "code:", userInput);
+      const res = await axios.post(`${API_BASE}/api/verify-qr`, { uid, token: userInput });
+      console.log("[frontend] /verify-qr response:", res?.data);
+      if (res.data.success) {
+        toast.success("Verification successful!");
+        router.push("/vault");
+      } else {
+        toast.error(res.data.message || "Invalid code. Try again.");
+      }
+    } catch (error: any) {
+      console.error("[frontend] verify-qr error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        request: !!error.request,
+      });
+      toast.error("Verification failed. Check console.");
     }
-  };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s < 10 ? "0" + s : s}`;
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <ToastContainer aria-label="Notification" />
       <div className="max-w-md w-full space-y-8">
-        {!randomCode ? (
+        {!qrCodeUrl ? (
           <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-md" onSubmit={handleSignIn}>
             <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
                 <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
+                  id="email" type="email" required value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter your email"
@@ -129,10 +106,7 @@ export default function SignInPage() {
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
                 <input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
+                  id="password" type="password" required value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter your password"
@@ -140,11 +114,8 @@ export default function SignInPage() {
               </div>
             </div>
             <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-              >
+              <button type="submit" disabled={isLoading}
+                className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
                 {isLoading ? "Signing in..." : "Sign In"}
               </button>
             </div>
@@ -155,22 +126,14 @@ export default function SignInPage() {
           </form>
         ) : (
           <div className="bg-white p-8 rounded-lg shadow-md text-center">
-            <h2 className="text-xl font-bold mb-4">Scan the QR and enter the code</h2>
-            <QRCodeCanvas value={randomCode} size={200} />
-            <p className="mt-2 text-sm text-gray-600">Code expires in: {formatTime(timeLeft)}</p>
-            <input
-              type="text"
-              placeholder="Enter code here"
-              value={userInput}
+            <h2 className="text-xl font-bold mb-4">Scan this QR with your Authenticator app</h2>
+            <img src={qrCodeUrl} alt="QR Code" className="mx-auto mb-4 w-48 h-48" />
+            <p className="text-sm text-gray-600 mb-2">Then enter the 6-digit code below</p>
+            <input type="text" placeholder="Enter code" value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              className="mt-4 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
-            />
-            <button
-              onClick={handleVerifyCode}
-              className="mt-4 w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700"
-            >
-              Verify
-            </button>
+              className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" />
+            <button onClick={handleVerifyCode}
+              className="mt-4 w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700">Verify</button>
           </div>
         )}
       </div>
